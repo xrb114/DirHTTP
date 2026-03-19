@@ -279,7 +279,7 @@ int main() {
         res.set_content(content, getMime(ext));
     });
 
-    int port = svr.bind_to_any_port("127.0.0.1");
+    int port = svr.bind_to_any_port("0.0.0.0");
     if (port == -1) {
         std::cerr << "Error: No available port\n";
         return 1;
