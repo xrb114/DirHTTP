@@ -3,6 +3,8 @@
 #define WIN32_LEAN_AND_MEAN
 
 #include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
 #include <windows.h>
 #include <shellapi.h>
 
@@ -17,6 +19,39 @@
 #include "lib/httplib.h"
 
 namespace fs = std::filesystem;
+
+std::vector<std::string> getLocalIPs() {
+    std::vector<std::string> ips;
+    ULONG bufLen = 15000;
+    std::vector<BYTE> buf(bufLen);
+    PIP_ADAPTER_ADDRESSES addrs = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buf.data());
+
+    ULONG ret = GetAdaptersAddresses(
+        AF_INET,
+        GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+        nullptr, addrs, &bufLen);
+    if (ret == ERROR_BUFFER_OVERFLOW) {
+        buf.resize(bufLen);
+        addrs = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buf.data());
+        ret = GetAdaptersAddresses(
+            AF_INET,
+            GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER,
+            nullptr, addrs, &bufLen);
+    }
+    if (ret != NO_ERROR) return ips;
+
+    for (auto* a = addrs; a; a = a->Next) {
+        if (a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+        if (a->OperStatus != IfOperStatusUp) continue;
+        for (auto* ua = a->FirstUnicastAddress; ua; ua = ua->Next) {
+            auto* sa = reinterpret_cast<sockaddr_in*>(ua->Address.lpSockaddr);
+            char ipStr[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &sa->sin_addr, ipStr, sizeof(ipStr));
+            ips.emplace_back(ipStr);
+        }
+    }
+    return ips;
+}
 
 std::string getMime(const std::string& ext) {
     static const std::map<std::string, std::string> mime = {
@@ -285,12 +320,23 @@ int main() {
         return 1;
     }
 
-    std::string url = "http://localhost:" + std::to_string(port);
-    ShellExecuteW(nullptr, L"open", utf8ToWide(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    std::string portStr = std::to_string(port);
+    std::string firstUrl = "http://localhost:" + portStr;
+    ShellExecuteW(nullptr, L"open", utf8ToWide(firstUrl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 
     std::cout << "Serving " << rootDir << "\n";
-    std::cout << "at " << url << "\n";
-    std::cout << "Press Enter to stop...\n";
+    std::cout << "Listening on port " << port << "\n\n";
+
+    auto ips = getLocalIPs();
+    if (ips.empty()) {
+        std::cout << "  http://localhost:" << portStr << "\n";
+    } else {
+        for (const auto& ip : ips) {
+            std::cout << "  http://" << ip << ":" << portStr << "\n";
+        }
+    }
+
+    std::cout << "\nPress Enter to stop...\n";
 
     std::thread server_thread([&svr]() {
         svr.listen_after_bind();

@@ -19,7 +19,7 @@ if(WIN32 AND MINGW)
             WINVER=0x0A00
     )
 
-    target_link_libraries(DirHTTP PRIVATE ws2_32 shell32)
+    target_link_libraries(DirHTTP PRIVATE ws2_32 shell32 iphlpapi)
 
     target_compile_options(DirHTTP PRIVATE
             -O2
