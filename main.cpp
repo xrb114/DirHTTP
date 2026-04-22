@@ -130,9 +130,9 @@ std::string wideToUtf8(const wchar_t* ws) {
 }
 
 bool installMenu() {
-    char exePath[MAX_PATH];
-    GetModuleFileNameA(nullptr, exePath, MAX_PATH);
-    std::string exe = exePath;
+    wchar_t exePathW[MAX_PATH];
+    GetModuleFileNameW(nullptr, exePathW, MAX_PATH);
+    std::wstring wexe = exePathW;
 
     auto write = [](const std::string& path, const std::string& name, const std::wstring& val) {
         HKEY hKey;
@@ -148,7 +148,6 @@ bool installMenu() {
         return ok;
     };
 
-    std::wstring wexe(exe.begin(), exe.end());
     std::wstring cmd   = L"\"" + wexe + L"\" \"%1\"";
     std::wstring cmdBg = L"\"" + wexe + L"\" \"%V\"";
     std::wstring icon  = wexe + L",0";
