@@ -20,6 +20,14 @@
 
 namespace fs = std::filesystem;
 
+enum class UninstallResult
+{
+    Success,
+    NotInstalled,
+    AccessDenied,
+    Failed
+};
+
 std::vector<std::string> getLocalIPs() {
     std::vector<std::string> ips;
     ULONG bufLen = 15000;
@@ -162,12 +170,42 @@ bool installMenu() {
     return ok;
 }
 
-bool uninstallMenu() {
-    bool ok = true;
-    ok &= (RegDeleteTreeA(HKEY_CLASSES_ROOT, "Directory\\shell\\DirHTTP") == ERROR_SUCCESS);
-    ok &= (RegDeleteTreeA(HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\DirHTTP") == ERROR_SUCCESS);
-    return ok;
+UninstallResult uninstallMenu()
+{
+    auto removeKey = [](const char *subKey) -> LONG
+    {
+        return RegDeleteTreeA(HKEY_CLASSES_ROOT, subKey);
+    };
+
+    LONG ret1 = removeKey("Directory\\shell\\DirHTTP");
+    LONG ret2 = removeKey("Directory\\Background\\shell\\DirHTTP");
+
+    if (ret1 == ERROR_FILE_NOT_FOUND &&
+        ret2 == ERROR_FILE_NOT_FOUND)
+    {
+        return UninstallResult::NotInstalled;
+    }
+
+    if (ret1 == ERROR_ACCESS_DENIED ||
+        ret2 == ERROR_ACCESS_DENIED)
+    {
+        return UninstallResult::AccessDenied;
+    }
+
+    auto isOk = [](LONG ret)
+    {
+        return ret == ERROR_SUCCESS ||
+               ret == ERROR_FILE_NOT_FOUND;
+    };
+
+    if (isOk(ret1) && isOk(ret2))
+    {
+        return UninstallResult::Success;
+    }
+
+    return UninstallResult::Failed;
 }
+
 
 int main() {
     SetConsoleOutputCP(65001);
@@ -189,9 +227,31 @@ int main() {
         return 0;
     }
 
-    if (wargc == 2 && arg(1) == "--uninstall") {
-        if (uninstallMenu()) std::cout << "右键菜单已卸载！\n";
-        else { std::cerr << "卸载失败，请以管理员身份运行\n"; LocalFree(wargv); return 1; }
+    if (wargc == 2 && arg(1) == "--uninstall")
+    {
+        UninstallResult result = uninstallMenu();
+
+        switch (result)
+        {
+        case UninstallResult::Success:
+            std::cout << "右键菜单已卸载！\n";
+            break;
+
+        case UninstallResult::NotInstalled:
+            std::cout << "右键菜单未安装。\n";
+            break;
+
+        case UninstallResult::AccessDenied:
+            std::cerr << "卸载失败，请以管理员身份运行\n";
+            LocalFree(wargv);
+            return 1;
+
+        default:
+            std::cerr << "卸载失败。\n";
+            LocalFree(wargv);
+            return 1;
+        }
+
         system("pause >nul");
         LocalFree(wargv);
         return 0;
